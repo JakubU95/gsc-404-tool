@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>GSC 404 Tool</title>
+<title>GSC 404 — Raport linkujących stron</title>
 <script src="https://accounts.google.com/gsi/client" async></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -14,14 +14,12 @@ h1{font-size:22px;font-weight:500;margin-bottom:4px}
 h2{font-size:16px;font-weight:500;margin-bottom:1rem}
 label{font-size:13px;color:#666;display:block;margin-bottom:6px}
 input,select,textarea{width:100%;padding:8px 12px;font-size:14px;border:1px solid #ddd;border-radius:8px;background:#fafafa;color:#1a1a1a}
-textarea{height:140px;resize:vertical;font-family:monospace;font-size:12px}
+textarea{height:160px;resize:vertical;font-family:monospace;font-size:12px}
 .btn{padding:8px 18px;font-size:14px;font-weight:500;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer;margin-right:8px;margin-top:8px}
 .btn-primary{background:#1a73e8;color:#fff;border-color:#1a73e8}
-.btn:disabled{opacity:.5;cursor:not-allowed}
 .info{background:#e8f0fe;border:1px solid #c5d8fd;border-radius:8px;padding:.75rem 1rem;font-size:13px;color:#1a56db;margin-bottom:1rem}
 .warn{background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:.75rem 1rem;font-size:13px;color:#7a5f00;margin-bottom:1rem}
 .err{background:#fce8e6;border:1px solid #f5c6c3;border-radius:8px;padding:.75rem 1rem;font-size:13px;color:#c62828;margin-bottom:1rem}
-.ok{background:#e6f4ea;border:1px solid #a8d5b5;border-radius:8px;padding:.75rem 1rem;font-size:13px;color:#1e7e34;margin-bottom:1rem}
 .metrics{display:flex;gap:12px;margin-bottom:1rem;flex-wrap:wrap}
 .metric{background:#f5f5f0;border-radius:8px;padding:.75rem 1rem;min-width:110px}
 .metric-val{font-size:24px;font-weight:500}
@@ -37,13 +35,12 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 .badge-gray{background:#f5f5f0;color:#666}
 .link{color:#1a73e8;font-size:12px;font-family:monospace;word-break:break-all;display:block;margin-bottom:2px}
 .step{display:none}.step.active{display:block}
-.log-line{font-size:12px;font-family:monospace;color:#444;padding:2px 0;border-bottom:1px solid #f0f0f0}
 </style>
 </head>
 <body>
 <div class="wrap">
 <h1>GSC 404 — Raport linkujących stron</h1>
-<p class="sub">Pobiera strony 404 przez Search Console API i sprawdza linki wewnętrzne</p>
+<p class="sub">Wgraj listę stron 404, a narzędzie sprawdzi skąd Google je odkrył</p>
 <div id="err-box" class="err" style="display:none"></div>
 
 <div id="step-auth" class="step active">
@@ -55,48 +52,23 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 
 <div id="step-site" class="step">
 <div class="card">
-<h2>Krok 2 — Wybierz domenę i metodę</h2>
+<h2>Krok 2 — Wybierz domenę</h2>
 <label>Domena GSC</label>
 <select id="site-select"><option value="">— wybierz domenę —</option></select>
 <br><br>
-<div class="info">
-  <strong>Jak działa pobieranie 404:</strong><br>
-  Narzędzie pobiera do 25 000 stron z Search Analytics (ostatnie 16 miesięcy), następnie sprawdza każdą przez URL Inspection API i filtruje te ze statusem "Not found".
-  Dla dużych domen może to potrwać kilka minut.
-</div>
-<br>
-<button class="btn btn-primary" id="btn-auto" onclick="startAuto()">Pobierz 404 automatycznie</button>
-<button class="btn" onclick="showStep('manual')">Wgraj listę ręcznie</button>
-</div>
-
-<div id="auto-progress" style="display:none" class="card">
-<div style="font-size:13px;font-weight:500;margin-bottom:8px" id="auto-status">Inicjalizacja...</div>
-<div class="progress-bar"><div class="progress-fill" id="auto-fill" style="width:0%"></div></div>
-<div id="auto-log" style="max-height:200px;overflow-y:auto;margin-top:8px"></div>
-</div>
-</div>
+<button class="btn btn-primary" onclick="showStep('manual')">Dalej →</button>
+</div></div>
 
 <div id="step-manual" class="step">
 <div class="card">
-<h2>Wgraj listę 404 ręcznie</h2>
-<div class="warn">Wklej jeden URL na linię. Eksportuj z GSC: Indeksowanie → Strony → "Nie znaleziono (404)" → Eksportuj CSV.</div>
-<textarea id="manual-urls" placeholder="https://finanse.wp.pl/stara-strona&#10;https://finanse.wp.pl/inna-404"></textarea>
-<br>
-<button class="btn btn-primary" onclick="useManual()">Dalej →</button>
-</div></div>
-
-<div id="step-review" class="step">
-<div class="card">
-<h2>Znalezione strony 404</h2>
-<div class="metrics">
-  <div class="metric"><div class="metric-val" id="r-count">0</div><div class="metric-lbl">URL-i 404</div></div>
-  <div class="metric"><div class="metric-val" id="r-src">—</div><div class="metric-lbl">źródło</div></div>
+<h2>Krok 3 — Wgraj listę stron 404</h2>
+<div class="warn">
+  Wklej jeden URL na linię (np. z eksportu z GSC lub Screaming Frog).<br>
+  GSC: Indeksowanie → Strony → "Nie znaleziono (404)" → Eksportuj CSV.
 </div>
-<div id="url-preview" style="max-height:200px;overflow-y:auto;background:#f5f5f0;border-radius:8px;padding:.75rem;margin-bottom:1rem;font-family:monospace;font-size:12px"></div>
-<div class="info">Kliknij "Sprawdź linki" żeby dla każdego 404 znaleźć strony które do niego linkują (skąd Google go odkrył).</div>
+<textarea id="manual-urls" placeholder="https://finanse.wp.pl/stara-strona&#10;https://finanse.wp.pl/inna-404&#10;https://finanse.wp.pl/brakujaca-strona"></textarea>
 <br>
-<button class="btn btn-primary" onclick="processLinks()">Sprawdź linki →</button>
-<button class="btn" onclick="showStep('site')">← Wróć</button>
+<button class="btn btn-primary" onclick="useManual()">Sprawdź linki →</button>
 </div></div>
 
 <div id="step-results" class="step">
@@ -107,40 +79,32 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 </div>
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin:1rem 0">
 <div class="metrics" id="result-metrics"></div>
+<div>
 <button class="btn" id="csv-btn" style="display:none" onclick="exportCSV()">Eksportuj CSV</button>
+<button class="btn" onclick="showStep('manual')" style="margin-top:8px">← Nowa lista</button>
+</div>
 </div>
 <input id="filter" placeholder="Filtruj po URL…" oninput="renderTable()" style="margin-bottom:12px">
 <div style="overflow-x:auto">
-<table><thead><tr>
-<th>URL 404</th><th style="width:70px">Linki</th><th>Strony linkujące (skąd Google odkrył)</th>
-</tr></thead><tbody id="result-body"></tbody></table>
+<table>
+<thead><tr>
+<th>URL 404</th>
+<th style="width:70px">Linki</th>
+<th>Strony linkujące (skąd Google odkrył)</th>
+</tr></thead>
+<tbody id="result-body"></tbody>
+</table>
 </div>
 </div></div>
 </div>
 
 <script>
 const CLIENT_ID='193257455280-5nt7i4fqf3c0sl8usrlesci1kjm0dl0h.apps.googleusercontent.com';
-let token=null, urls404=[], results=[], selectedSite='', autoRunning=false;
+let token=null, urls404=[], results=[], selectedSite='';
 
 function showErr(m){const b=document.getElementById('err-box');b.textContent=m;b.style.display=m?'block':'none';}
 function showStep(id){document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));document.getElementById('step-'+id).classList.add('active');}
-
-function addLog(msg){
-  const d=document.getElementById('auto-log');
-  if(!d)return;
-  const line=document.createElement('div');
-  line.className='log-line';
-  line.textContent=new Date().toLocaleTimeString('pl-PL')+' '+msg;
-  d.appendChild(line);
-  d.scrollTop=d.scrollHeight;
-}
-
-function setAutoStatus(msg,pct){
-  const s=document.getElementById('auto-status');
-  const f=document.getElementById('auto-fill');
-  if(s)s.textContent=msg;
-  if(f)f.style.width=pct+'%';
-}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 function doAuth(){
   showErr('');
@@ -169,142 +133,19 @@ async function fetchSites(){
   sel.onchange=()=>{selectedSite=sel.value;};
 }
 
-// ============================================================
-// GŁÓWNA FUNKCJA AUTOMATYCZNEGO POBIERANIA 404
-// ============================================================
-async function startAuto(){
-  selectedSite=document.getElementById('site-select').value;
-  if(!selectedSite){showErr('Wybierz domenę.');return;}
-  showErr('');
-  document.getElementById('auto-progress').style.display='block';
-  document.getElementById('btn-auto').disabled=true;
-  urls404=[];
-
-  // KROK 1: Sitemaps
-  addLog('Sprawdzam błędy w sitemapach...');
-  setAutoStatus('Krok 1/3: Sitemaps...',5);
-  try{
-    const sr=await fetch('https://www.googleapis.com/webmasters/v3/sites/'+encodeURIComponent(selectedSite)+'/sitemaps',{headers:{Authorization:'Bearer '+token}});
-    if(sr.ok){
-      const sd=await sr.json();
-      for(const sm of (sd.sitemap||[])){
-        if((sm.errors||0)>0){
-          const smr=await fetch('https://www.googleapis.com/webmasters/v3/sites/'+encodeURIComponent(selectedSite)+'/sitemaps/'+encodeURIComponent(sm.path),{headers:{Authorization:'Bearer '+token}});
-          if(smr.ok){
-            const smd=await smr.json();
-            (smd.contents||[]).forEach(c=>{
-              (c.caughtUrlErrors||[]).forEach(e=>{
-                if(e.type==='notFound'||e.type==='soft404') urls404.push(e.url);
-              });
-            });
-          }
-        }
-      }
-    }
-    addLog('Sitemaps: '+urls404.length+' błędów 404');
-  }catch(e){addLog('Sitemap error: '+e.message);}
-
-  // KROK 2: Search Analytics — pobierz wszystkie strony
-  addLog('Pobieram strony z Search Analytics (do 25 000)...');
-  setAutoStatus('Krok 2/3: Pobieranie stron z GSC...',15);
-  const allPages=new Set();
-  try{
-    const today=new Date();
-    const from=new Date(today-16*30*24*60*60*1000);
-    const fmt=d=>d.toISOString().slice(0,10);
-    let startRow=0, hasMore=true;
-    while(hasMore && allPages.size<25000){
-      const r=await fetch('https://www.googleapis.com/webmasters/v3/sites/'+encodeURIComponent(selectedSite)+'/searchAnalytics/query',{
-        method:'POST',
-        headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
-        body:JSON.stringify({startDate:fmt(from),endDate:fmt(today),dimensions:['page'],rowLimit:5000,startRow,aggregationType:'byPage'})
-      });
-      if(!r.ok){
-        const errText=await r.text();
-        addLog('Search Analytics HTTP '+r.status+': '+errText.substring(0,200));
-        break;
-      }
-      const d=await r.json();
-      const rows=d.rows||[];
-      rows.forEach(row=>{if(row.keys&&row.keys[0])allPages.add(row.keys[0]);});
-      addLog('Batch '+(startRow/5000+1)+': pobrano '+rows.length+' stron (łącznie: '+allPages.size+')');
-      startRow+=5000;
-      hasMore=rows.length===5000;
-      if(rows.length<5000)break;
-      await sleep(300);
-    }
-  }catch(e){addLog('Search Analytics error: '+e.message);}
-
-  addLog('Łącznie stron z Search Analytics: '+allPages.size);
-
-  if(allPages.size===0 && urls404.length===0){
-    addLog('UWAGA: Brak stron z API. Sprawdź czy domena jest poprawna i masz dostęp do GSC.');
-    document.getElementById('btn-auto').disabled=false;
-    return;
-  }
-
-  // KROK 3: URL Inspection dla każdej strony
-  setAutoStatus('Krok 3/3: Sprawdzanie statusu indeksowania...',25);
-  addLog('Sprawdzam status '+allPages.size+' stron przez URL Inspection API...');
-  const pageArr=[...allPages];
-  let checked=0, found=0;
-
-  for(let i=0;i<pageArr.length;i++){
-    const url=pageArr[i];
-    const pct=25+Math.round((i/pageArr.length)*70);
-    if(i%100===0){
-      setAutoStatus('Krok 3/3: Sprawdzono '+i+'/'+pageArr.length+', znaleziono '+found+' 404...',pct);
-      addLog('Sprawdzono: '+i+'/'+pageArr.length+' | 404: '+found);
-    }
-    try{
-      const r=await fetch('https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',{
-        method:'POST',
-        headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
-        body:JSON.stringify({inspectionUrl:url,siteUrl:selectedSite})
-      });
-      if(r.ok){
-        const d=await r.json();
-        const cs=(d.inspectionResult?.indexStatusResult?.coverageState||'');
-        if(cs.toLowerCase().includes('not found')||cs.toLowerCase().includes('404')){
-          if(!urls404.includes(url)){urls404.push(url);found++;}
-        }
-      }
-    }catch(e){}
-    await sleep(250);
-    checked++;
-  }
-
-  setAutoStatus('Zakończono! Znaleziono '+urls404.length+' stron 404.',100);
-  addLog('GOTOWE. Łącznie 404: '+urls404.length);
-  document.getElementById('btn-auto').disabled=false;
-
-  if(urls404.length===0){
-    addLog('Brak 404. Spróbuj opcji "Wgraj ręcznie" z eksportu z GSC.');
-    return;
-  }
-
-  const unique=[...new Set(urls404)];
-  urls404=unique;
-  document.getElementById('r-count').textContent=urls404.length;
-  document.getElementById('r-src').textContent='Auto';
-  document.getElementById('url-preview').innerHTML=urls404.slice(0,200).map(u=>'<div>'+u+'</div>').join('')+(urls404.length>200?'<div style="color:#666">...i '+(urls404.length-200)+' więcej</div>':'');
-  showStep('review');
-}
-
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-
 function useManual(){
-  urls404=document.getElementById('manual-urls').value.split('\n').map(l=>l.trim()).filter(l=>l.startsWith('http'));
-  if(!urls404.length){showErr('Brak prawidłowych URL-i.');return;}
+  selectedSite=document.getElementById('site-select').value;
+  if(!selectedSite){showErr('Wróć i wybierz domenę GSC.');return;}
+  urls404=document.getElementById('manual-urls').value
+    .split('\n').map(l=>l.trim()).filter(l=>l.startsWith('http'));
+  if(!urls404.length){showErr('Brak prawidłowych URL-i. Każdy musi zaczynać się od https://');return;}
   showErr('');
-  document.getElementById('r-count').textContent=urls404.length;
-  document.getElementById('r-src').textContent='Ręcznie';
-  document.getElementById('url-preview').innerHTML=urls404.map(u=>'<div>'+u+'</div>').join('');
-  showStep('review');
+  processLinks();
 }
 
 async function processLinks(){
-  results=[];showStep('results');
+  results=[];
+  showStep('results');
   document.getElementById('progress-wrap').style.display='block';
   document.getElementById('csv-btn').style.display='none';
 
@@ -324,7 +165,7 @@ async function processLinks(){
       const cs=(d.inspectionResult?.indexStatusResult?.coverageState||'');
       results.push({url,linkedFrom:refs,count:refs.length,coverageState:cs});
     }catch(e){
-      results.push({url,linkedFrom:[],count:0,err:true});
+      results.push({url,linkedFrom:[],count:0,err:true,errMsg:e.message});
     }
     renderTable();
     await sleep(300);
@@ -339,8 +180,8 @@ function renderTable(){
   const rows=results.filter(r=>!f||r.url.includes(f)||r.linkedFrom.some(l=>l.includes(f)));
   document.getElementById('result-body').innerHTML=rows.map(r=>{
     let lh='';
-    if(r.err)lh='<span style="color:#999">błąd API</span>';
-    else if(!r.linkedFrom.length)lh='<span style="color:#999">brak linków wewnętrznych</span>';
+    if(r.err) lh='<span style="color:#999;font-size:12px">błąd: '+r.errMsg+'</span>';
+    else if(!r.linkedFrom.length) lh='<span style="color:#999;font-size:12px">brak linków wewnętrznych</span>';
     else lh=r.linkedFrom.map(l=>'<a class="link" href="'+l+'" target="_blank">'+l+'</a>').join('');
     return '<tr><td class="mono">'+r.url+'</td><td><span class="badge '+(r.count>0?'badge-red':'badge-gray')+'">'+r.count+'</span></td><td>'+lh+'</td></tr>';
   }).join('');
@@ -364,4 +205,4 @@ function exportCSV(){
 }
 </script>
 </body>
-  </html>
+</html>
