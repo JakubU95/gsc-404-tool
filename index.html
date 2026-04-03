@@ -17,17 +17,19 @@ input,select,textarea{width:100%;padding:8px 12px;font-size:14px;border:1px soli
 textarea{height:160px;resize:vertical;font-family:monospace;font-size:12px}
 .btn{padding:8px 18px;font-size:14px;font-weight:500;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer;margin-right:8px;margin-top:8px}
 .btn-primary{background:#1a73e8;color:#fff;border-color:#1a73e8}
+.btn-warn{background:#e65100;color:#fff;border-color:#e65100;font-size:16px;padding:12px 24px}
 .btn-danger{background:#fff;color:#c62828;border-color:#f5c6c3}
 .info{background:#e8f0fe;border:1px solid #c5d8fd;border-radius:8px;padding:.75rem 1rem;font-size:13px;color:#1a56db;margin-bottom:1rem}
 .warn{background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:.75rem 1rem;font-size:13px;color:#7a5f00;margin-bottom:1rem}
 .err{background:#fce8e6;border:1px solid #f5c6c3;border-radius:8px;padding:.75rem 1rem;font-size:13px;color:#c62828;margin-bottom:1rem}
 .ok{background:#e6f4ea;border:1px solid #a8d5b5;border-radius:8px;padding:.75rem 1rem;font-size:13px;color:#1e7e34;margin-bottom:1rem}
+.token-expired{background:#fce8e6;border:2px solid #c62828;border-radius:12px;padding:1.5rem;margin-bottom:1rem;text-align:center}
 .metrics{display:flex;gap:12px;margin-bottom:1rem;flex-wrap:wrap}
 .metric{background:#f5f5f0;border-radius:8px;padding:.75rem 1rem;min-width:110px}
 .metric-val{font-size:24px;font-weight:500}
 .metric-lbl{font-size:12px;color:#666;margin-top:2px}
-.progress-bar{height:6px;background:#eee;border-radius:3px;overflow:hidden;margin-bottom:.5rem}
-.progress-fill{height:100%;background:#1a73e8;transition:width .3s;border-radius:3px}
+.progress-bar{height:8px;background:#eee;border-radius:4px;overflow:hidden;margin-bottom:.5rem}
+.progress-fill{height:100%;background:#1a73e8;transition:width .3s;border-radius:4px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;padding:8px 10px;border-bottom:1px solid #eee;color:#666;font-weight:500}
 td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
@@ -37,7 +39,6 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 .badge-gray{background:#f5f5f0;color:#666}
 .link{color:#1a73e8;font-size:12px;font-family:monospace;word-break:break-all;display:block;margin-bottom:2px}
 .step{display:none}.step.active{display:block}
-.saved-badge{display:inline-block;background:#e6f4ea;color:#1e7e34;font-size:11px;padding:2px 8px;border-radius:6px;margin-left:8px}
 </style>
 </head>
 <body>
@@ -66,21 +67,23 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 <div id="step-manual" class="step">
 <div class="card">
 <h2>Krok 3 — Wgraj listę stron 404</h2>
-<div class="warn">
-  Wklej jeden URL na linię (np. z eksportu GSC lub Screaming Frog).<br>
-  GSC: Indeksowanie → Strony → "Nie znaleziono (404)" → Eksportuj CSV.
-</div>
+<div class="warn">Wklej jeden URL na linię (np. z eksportu GSC lub Screaming Frog).</div>
 <textarea id="manual-urls" placeholder="https://example.com/stara-strona&#10;https://example.com/inna-404"></textarea>
 <br>
 <button class="btn btn-primary" onclick="useManual()">Sprawdź linki →</button>
 </div></div>
 
 <div id="step-results" class="step">
+<div id="token-expired-banner" style="display:none" class="token-expired">
+  <div style="font-size:18px;font-weight:500;color:#c62828;margin-bottom:8px">⚠️ Token wygasł — praca wstrzymana</div>
+  <div style="font-size:14px;color:#666;margin-bottom:16px">Sprawdzono <span id="paused-at"></span> URL-i. Wyniki są zapisane. Kliknij przycisk żeby odświeżyć token i kontynuować.</div>
+  <button class="btn btn-warn" onclick="renewAndContinue()">🔄 Odśwież token i kontynuuj</button>
+</div>
 <div class="card">
 <div id="progress-wrap" style="margin-bottom:1rem;display:none">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
   <span style="font-size:13px;color:#666">Sprawdzanie linków… <span id="prog-text">0/0</span></span>
-  <span style="font-size:12px;color:#666" id="save-status"></span>
+  <span style="font-size:12px;color:#888" id="save-status"></span>
 </div>
 <div class="progress-bar"><div class="progress-fill" id="prog-fill" style="width:0%"></div></div>
 </div>
@@ -94,132 +97,100 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 </div>
 <input id="filter" placeholder="Filtruj po URL…" oninput="renderTable()" style="margin-bottom:12px">
 <div style="overflow-x:auto">
-<table>
-<thead><tr>
+<table><thead><tr>
 <th>URL 404</th><th style="width:70px">Linki</th><th>Strony linkujące (skąd Google odkrył)</th>
-</tr></thead>
-<tbody id="result-body"></tbody>
-</table>
+</tr></thead><tbody id="result-body"></tbody></table>
 </div>
 </div></div>
 </div>
 
 <script>
 const CLIENT_ID = '193257455280-5nt7i4fqf3c0sl8usrlesci1kjm0dl0h.apps.googleusercontent.com';
-const STORAGE_KEY = 'gsc404_results';
-const STORAGE_URLS_KEY = 'gsc404_urls';
-const STORAGE_SITE_KEY = 'gsc404_site';
-const STORAGE_IDX_KEY = 'gsc404_idx';
+const SK = 'gsc404_results', SK_U = 'gsc404_urls', SK_S = 'gsc404_site', SK_I = 'gsc404_idx';
 
-let token = null;
-let tokenClient = null;
-let tokenExpiry = 0;
-let urls404 = [], results = [], selectedSite = '';
-let currentIdx = 0;
-let isRunning = false;
+let token = null, tokenClient = null, tokenExpiry = 0;
+let urls404 = [], results = [], selectedSite = '', currentIdx = 0, isRunning = false;
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 function showErr(m){ const b=document.getElementById('err-box'); b.textContent=m; b.style.display=m?'block':'none'; }
 function showStep(id){ document.querySelectorAll('.step').forEach(s=>s.classList.remove('active')); document.getElementById('step-'+id).classList.add('active'); }
 
-// ---- localStorage helpers ----
 function saveProgress(){
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(results));
-    localStorage.setItem(STORAGE_URLS_KEY, JSON.stringify(urls404));
-    localStorage.setItem(STORAGE_SITE_KEY, selectedSite);
-    localStorage.setItem(STORAGE_IDX_KEY, String(currentIdx));
+    localStorage.setItem(SK, JSON.stringify(results));
+    localStorage.setItem(SK_U, JSON.stringify(urls404));
+    localStorage.setItem(SK_S, selectedSite);
+    localStorage.setItem(SK_I, String(currentIdx));
   }catch(e){}
 }
 
 function loadProgress(){
   try{
-    const r = localStorage.getItem(STORAGE_KEY);
-    const u = localStorage.getItem(STORAGE_URLS_KEY);
-    const s = localStorage.getItem(STORAGE_SITE_KEY);
-    const i = localStorage.getItem(STORAGE_IDX_KEY);
-    if(r && u && s){
-      return {
-        results: JSON.parse(r),
-        urls: JSON.parse(u),
-        site: s,
-        idx: parseInt(i)||0
-      };
-    }
+    const r=localStorage.getItem(SK), u=localStorage.getItem(SK_U), s=localStorage.getItem(SK_S), i=localStorage.getItem(SK_I);
+    if(r&&u&&s) return {results:JSON.parse(r), urls:JSON.parse(u), site:s, idx:parseInt(i)||0};
   }catch(e){}
   return null;
 }
 
 function clearSaved(){
-  try{
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(STORAGE_URLS_KEY);
-    localStorage.removeItem(STORAGE_SITE_KEY);
-    localStorage.removeItem(STORAGE_IDX_KEY);
-  }catch(e){}
-  results = []; urls404 = []; currentIdx = 0;
+  [SK,SK_U,SK_S,SK_I].forEach(k=>localStorage.removeItem(k));
+  results=[]; urls404=[]; currentIdx=0;
   renderTable(); updateMetrics();
-  document.getElementById('save-status').textContent = 'Wyczyszczono.';
 }
 
-// ---- OAuth ----
 function initTokenClient(){
   if(tokenClient) return;
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/webmasters.readonly',
-    callback: async (r) => {
+    callback: async(r)=>{
       if(r.error){ showErr('Błąd OAuth: '+r.error); return; }
       token = r.access_token;
-      tokenExpiry = Date.now() + 55*60*1000;
-      if(!selectedSite){
-        await fetchSites();
-        // Sprawdź czy jest zapisany postęp
-        checkResumeOnLoad();
-        showStep('site');
-      }
+      tokenExpiry = Date.now() + 58*60*1000; // 58 min (token trwa 60min)
+      if(!selectedSite){ await fetchSites(); checkResumeOnLoad(); showStep('site'); }
     }
   });
 }
 
-function doAuth(){
-  showErr('');
-  if(!window.google){ showErr('Odśwież stronę i spróbuj ponownie.'); return; }
+function doAuth(){ showErr(''); if(!window.google){showErr('Odśwież stronę.');return;} initTokenClient(); tokenClient.requestAccessToken(); }
+
+function tokenIsExpired(){ return !token || Date.now() > tokenExpiry; }
+
+function showTokenExpiredBanner(){
+  isRunning = false;
+  const banner = document.getElementById('token-expired-banner');
+  document.getElementById('paused-at').textContent = currentIdx + '/' + urls404.length;
+  banner.style.display = 'block';
+  document.getElementById('progress-wrap').style.display = 'none';
+  document.getElementById('csv-btn').style.display = results.length > 0 ? 'inline-block' : 'none';
+  // Powiadomienie dźwiękowe/wizualne
+  document.title = '⚠️ Token wygasł — kliknij aby kontynuować';
+}
+
+function renewAndContinue(){
   initTokenClient();
+  const prev = tokenClient.callback;
+  tokenClient.callback = async(r)=>{
+    tokenClient.callback = prev;
+    if(r.error){ showErr('Błąd odświeżania: '+r.error); return; }
+    token = r.access_token;
+    tokenExpiry = Date.now() + 58*60*1000;
+    document.getElementById('token-expired-banner').style.display = 'none';
+    document.getElementById('progress-wrap').style.display = 'block';
+    document.title = 'GSC 404 — Raport linkujących stron';
+    continueProcessing();
+  };
   tokenClient.requestAccessToken();
 }
 
-async function refreshToken(){
-  return new Promise(resolve=>{
-    const prev = tokenClient.callback;
-    tokenClient.callback = (r)=>{
-      if(!r.error){ token=r.access_token; tokenExpiry=Date.now()+55*60*1000; }
-      tokenClient.callback = prev;
-      resolve();
-    };
-    tokenClient.requestAccessToken({prompt:''});
-  });
-}
-
-async function ensureToken(){
-  if(!token || Date.now() > tokenExpiry - 2*60*1000){
-    await refreshToken();
-  }
-}
-
-// ---- Resume ----
 function checkResumeOnLoad(){
   const saved = loadProgress();
   if(!saved || saved.idx >= saved.urls.length) return;
-  const remaining = saved.urls.length - saved.idx;
   const box = document.getElementById('resume-box');
   box.innerHTML = `<div class="ok" style="margin-bottom:1rem">
     <strong>Znaleziono zapisany postęp!</strong><br>
-    Domena: ${saved.site}<br>
-    Sprawdzono: ${saved.idx}/${saved.urls.length} URL-i (${saved.results.length} wyników)<br>
-    Pozostało: ${remaining} URL-i
-    <br><br>
-    <button class="btn btn-primary" onclick="resumeFromSaved()">Kontynuuj od miejsca przerwania</button>
+    Domena: ${saved.site} | Sprawdzono: ${saved.idx}/${saved.urls.length} | Wyniki: ${saved.results.length}<br><br>
+    <button class="btn btn-primary" onclick="resumeFromSaved()" style="margin-top:0">Kontynuuj od miejsca przerwania</button>
     <button class="btn" onclick="document.getElementById('resume-box').style.display='none'" style="margin-top:0">Zacznij od nowa</button>
   </div>`;
   box.style.display = 'block';
@@ -228,117 +199,99 @@ function checkResumeOnLoad(){
 async function resumeFromSaved(){
   const saved = loadProgress();
   if(!saved) return;
-  urls404 = saved.urls;
-  results = saved.results;
-  selectedSite = saved.site;
-  currentIdx = saved.idx;
-
-  // Ustaw domenę w select jeśli możliwe
-  const sel = document.getElementById('site-select');
+  urls404=saved.urls; results=saved.results; selectedSite=saved.site; currentIdx=saved.idx;
+  const sel=document.getElementById('site-select');
   Array.from(sel.options).forEach(o=>{ if(o.value===selectedSite) o.selected=true; });
-
   showStep('results');
-  document.getElementById('progress-wrap').style.display = 'block';
-  document.getElementById('csv-btn').style.display = 'none';
+  document.getElementById('progress-wrap').style.display='block';
+  document.getElementById('csv-btn').style.display='none';
   renderTable(); updateMetrics();
   continueProcessing();
 }
 
 async function fetchSites(){
-  const r = await fetch('https://www.googleapis.com/webmasters/v3/sites',{headers:{Authorization:'Bearer '+token}});
-  const d = await r.json();
-  const sel = document.getElementById('site-select');
-  sel.innerHTML = '<option value="">— wybierz domenę —</option>';
-  (d.siteEntry||[]).forEach(e=>{
-    const o=document.createElement('option');
-    o.value=e.siteUrl; o.textContent=e.siteUrl; sel.appendChild(o);
-  });
+  const r=await fetch('https://www.googleapis.com/webmasters/v3/sites',{headers:{Authorization:'Bearer '+token}});
+  const d=await r.json();
+  const sel=document.getElementById('site-select');
+  sel.innerHTML='<option value="">— wybierz domenę —</option>';
+  (d.siteEntry||[]).forEach(e=>{ const o=document.createElement('option'); o.value=e.siteUrl; o.textContent=e.siteUrl; sel.appendChild(o); });
   sel.onchange=()=>{ selectedSite=sel.value; };
 }
 
 function useManual(){
-  selectedSite = document.getElementById('site-select').value;
-  if(!selectedSite){ showErr('Wróć i wybierz domenę GSC.'); return; }
-  const raw = document.getElementById('manual-urls').value
-    .split('\n').map(l=>l.trim()).filter(l=>l.startsWith('http'));
+  selectedSite=document.getElementById('site-select').value;
+  if(!selectedSite){ showErr('Wybierz domenę GSC.'); return; }
+  const raw=document.getElementById('manual-urls').value.split('\n').map(l=>l.trim()).filter(l=>l.startsWith('http'));
   if(!raw.length){ showErr('Brak prawidłowych URL-i.'); return; }
   showErr('');
-
-  // Sprawdź czy mamy już zapisane wyniki dla tej samej listy
-  const saved = loadProgress();
+  const saved=loadProgress();
   if(saved && saved.site===selectedSite && saved.idx>0 && saved.idx<raw.length){
-    if(confirm('Znaleziono poprzedni postęp ('+saved.idx+'/'+raw.length+' URL-i). Kontynuować od miejsca przerwania?')){
-      urls404 = raw; results = saved.results; currentIdx = saved.idx;
-      showStep('results');
-      document.getElementById('progress-wrap').style.display = 'block';
-      renderTable(); updateMetrics();
-      continueProcessing();
-      return;
+    if(confirm('Znaleziono poprzedni postęp ('+saved.idx+'/'+raw.length+'). Kontynuować?')){
+      urls404=raw; results=saved.results; currentIdx=saved.idx;
+      showStep('results'); document.getElementById('progress-wrap').style.display='block';
+      renderTable(); updateMetrics(); continueProcessing(); return;
     }
   }
-
-  urls404 = raw; results = []; currentIdx = 0;
-  saveProgress();
-  showStep('results');
-  document.getElementById('progress-wrap').style.display = 'block';
-  document.getElementById('csv-btn').style.display = 'none';
+  urls404=raw; results=[]; currentIdx=0; saveProgress();
+  showStep('results'); document.getElementById('progress-wrap').style.display='block';
+  document.getElementById('csv-btn').style.display='none';
   continueProcessing();
 }
 
 async function continueProcessing(){
   if(isRunning) return;
-  isRunning = true;
-  document.getElementById('csv-btn').style.display = 'none';
+  isRunning=true;
 
-  for(let i = currentIdx; i < urls404.length; i++){
-    currentIdx = i;
-    const url = urls404[i];
-    document.getElementById('prog-text').textContent = (i+1)+'/'+urls404.length;
-    document.getElementById('prog-fill').style.width = Math.round(((i+1)/urls404.length)*100)+'%';
-    document.getElementById('save-status').textContent = '💾 Zapisano: '+(i)+' URL-i';
+  for(let i=currentIdx; i<urls404.length; i++){
+    currentIdx=i;
 
-    await ensureToken();
+    // Sprawdź token PRZED każdym requestem
+    if(tokenIsExpired()){
+      saveProgress();
+      showTokenExpiredBanner();
+      return; // zatrzymaj — użytkownik kliknie "Odśwież token"
+    }
+
+    const url=urls404[i];
+    document.getElementById('prog-text').textContent=(i+1)+'/'+urls404.length;
+    document.getElementById('prog-fill').style.width=Math.round(((i+1)/urls404.length)*100)+'%';
 
     try{
-      const r = await fetch('https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',{
+      const r=await fetch('https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',{
         method:'POST',
         headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
         body:JSON.stringify({inspectionUrl:url,siteUrl:selectedSite})
       });
+
       if(r.status===401){
-        await refreshToken();
-        const r2 = await fetch('https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',{
-          method:'POST',
-          headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
-          body:JSON.stringify({inspectionUrl:url,siteUrl:selectedSite})
-        });
-        const d2 = await r2.json();
-        const refs2=(d2.inspectionResult?.indexStatusResult?.referringUrls||[]);
-        results.push({url,linkedFrom:refs2,count:refs2.length,coverageState:(d2.inspectionResult?.indexStatusResult?.coverageState||'')});
-      } else if(!r.ok){
-        throw new Error('HTTP '+r.status);
-      } else {
-        const d = await r.json();
-        const refs=(d.inspectionResult?.indexStatusResult?.referringUrls||[]);
-        results.push({url,linkedFrom:refs,count:refs.length,coverageState:(d.inspectionResult?.indexStatusResult?.coverageState||'')});
+        // Token wygasł w trakcie requestu
+        currentIdx=i; saveProgress();
+        showTokenExpiredBanner();
+        return;
       }
+
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const d=await r.json();
+      const refs=(d.inspectionResult?.indexStatusResult?.referringUrls||[]);
+      results.push({url,linkedFrom:refs,count:refs.length,coverageState:(d.inspectionResult?.indexStatusResult?.coverageState||'')});
     }catch(e){
+      if(e.message.includes('401')){ currentIdx=i; saveProgress(); showTokenExpiredBanner(); return; }
       results.push({url,linkedFrom:[],count:0,err:true,errMsg:e.message});
     }
 
-    // Zapisz postęp co 10 URL-i
-    if(i % 10 === 0) saveProgress();
+    if(i%10===0){
+      saveProgress();
+      document.getElementById('save-status').textContent='💾 '+i+' zapisanych';
+    }
     renderTable();
     await sleep(300);
   }
 
-  // Zapisz końcowy stan
-  currentIdx = urls404.length;
-  saveProgress();
-  isRunning = false;
-  document.getElementById('progress-wrap').style.display = 'none';
-  document.getElementById('csv-btn').style.display = 'inline-block';
-  document.getElementById('save-status').textContent = '✅ Gotowe! Zapisano '+results.length+' wyników.';
+  currentIdx=urls404.length; saveProgress(); isRunning=false;
+  document.getElementById('progress-wrap').style.display='none';
+  document.getElementById('csv-btn').style.display='inline-block';
+  document.getElementById('save-status').textContent='';
+  document.title='✅ Gotowe! GSC 404';
   updateMetrics();
 }
 
@@ -371,13 +324,10 @@ function exportCSV(){
   a.download='gsc_404_links.csv'; a.click();
 }
 
-// Przy ładowaniu strony sprawdź czy jest zapisany postęp
-window.addEventListener('load', ()=>{
-  const saved = loadProgress();
-  if(saved && saved.idx > 0 && saved.idx < (saved.urls||[]).length){
-    checkResumeOnLoad();
-  }
+window.addEventListener('load',()=>{
+  const saved=loadProgress();
+  if(saved && saved.idx>0 && saved.idx<(saved.urls||[]).length) checkResumeOnLoad();
 });
 </script>
 </body>
-  </html>
+                            </html>
