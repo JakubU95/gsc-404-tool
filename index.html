@@ -35,6 +35,9 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 .badge-gray{background:#f5f5f0;color:#666}
 .link{color:#1a73e8;font-size:12px;font-family:monospace;word-break:break-all;display:block;margin-bottom:2px}
 .step{display:none}.step.active{display:block}
+.token-status{font-size:12px;color:#666;margin-top:6px}
+.token-ok{color:#1e7e34}
+.token-warn{color:#e65100}
 </style>
 </head>
 <body>
@@ -53,6 +56,8 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 <div id="step-site" class="step">
 <div class="card">
 <h2>Krok 2 — Wybierz domenę</h2>
+<div id="token-status" class="token-status"></div>
+<br>
 <label>Domena GSC</label>
 <select id="site-select"><option value="">— wybierz domenę —</option></select>
 <br><br>
@@ -63,10 +68,10 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 <div class="card">
 <h2>Krok 3 — Wgraj listę stron 404</h2>
 <div class="warn">
-  Wklej jeden URL na linię (np. z eksportu z GSC lub Screaming Frog).<br>
+  Wklej jeden URL na linię (np. z eksportu GSC lub Screaming Frog).<br>
   GSC: Indeksowanie → Strony → "Nie znaleziono (404)" → Eksportuj CSV.
 </div>
-<textarea id="manual-urls" placeholder="https://finanse.wp.pl/stara-strona&#10;https://finanse.wp.pl/inna-404&#10;https://finanse.wp.pl/brakujaca-strona"></textarea>
+<textarea id="manual-urls" placeholder="https://example.com/stara-strona&#10;https://example.com/inna-404"></textarea>
 <br>
 <button class="btn btn-primary" onclick="useManual()">Sprawdź linki →</button>
 </div></div>
@@ -74,23 +79,24 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 <div id="step-results" class="step">
 <div class="card">
 <div id="progress-wrap" style="margin-bottom:1rem">
-<div style="font-size:13px;color:#666;margin-bottom:6px">Sprawdzanie linków… <span id="prog-text">0/0</span></div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+  <span style="font-size:13px;color:#666">Sprawdzanie linków… <span id="prog-text">0/0</span></span>
+  <span id="token-live" class="token-status"></span>
+</div>
 <div class="progress-bar"><div class="progress-fill" id="prog-fill" style="width:0%"></div></div>
 </div>
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin:1rem 0">
 <div class="metrics" id="result-metrics"></div>
 <div>
-<button class="btn" id="csv-btn" style="display:none" onclick="exportCSV()">Eksportuj CSV</button>
-<button class="btn" onclick="showStep('manual')" style="margin-top:8px">← Nowa lista</button>
+  <button class="btn" id="csv-btn" style="display:none" onclick="exportCSV()">Eksportuj CSV</button>
+  <button class="btn" onclick="showStep('manual')" style="margin-top:8px">← Nowa lista</button>
 </div>
 </div>
 <input id="filter" placeholder="Filtruj po URL…" oninput="renderTable()" style="margin-bottom:12px">
 <div style="overflow-x:auto">
 <table>
 <thead><tr>
-<th>URL 404</th>
-<th style="width:70px">Linki</th>
-<th>Strony linkujące (skąd Google odkrył)</th>
+<th>URL 404</th><th style="width:70px">Linki</th><th>Strony linkujące (skąd Google odkrył)</th>
 </tr></thead>
 <tbody id="result-body"></tbody>
 </table>
@@ -99,109 +105,187 @@ td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
 </div>
 
 <script>
-const CLIENT_ID='193257455280-5nt7i4fqf3c0sl8usrlesci1kjm0dl0h.apps.googleusercontent.com';
-let token=null, urls404=[], results=[], selectedSite='';
+const CLIENT_ID = '193257455280-5nt7i4fqf3c0sl8usrlesci1kjm0dl0h.apps.googleusercontent.com';
+let token = null;
+let tokenExpiry = 0; // timestamp ms kiedy wygasa
+let tokenClient = null;
+let urls404 = [], results = [], selectedSite = '';
 
-function showErr(m){const b=document.getElementById('err-box');b.textContent=m;b.style.display=m?'block':'none';}
-function showStep(id){document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));document.getElementById('step-'+id).classList.add('active');}
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+function showErr(m){ const b=document.getElementById('err-box'); b.textContent=m; b.style.display=m?'block':'none'; }
+function showStep(id){ document.querySelectorAll('.step').forEach(s=>s.classList.remove('active')); document.getElementById('step-'+id).classList.add('active'); }
+
+// Inicjalizuje token client raz
+function initTokenClient(){
+  if(tokenClient) return;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/webmasters.readonly',
+    callback: async (r) => {
+      if(r.error){ showErr('Błąd OAuth: '+r.error); return; }
+      token = r.access_token;
+      // Token Google OAuth trwa 3600s = 1h, odświeżamy po 55 min
+      tokenExpiry = Date.now() + 55 * 60 * 1000;
+      updateTokenStatus();
+      if(!selectedSite){
+        await fetchSites();
+        showStep('site');
+      }
+      // Jeśli odświeżamy w trakcie pracy — nic nie robimy, processLinks sam sprawdzi
+    }
+  });
+}
+
+// Odświeża token jeśli wygasa za mniej niż 2 minuty
+async function ensureToken(){
+  if(token && Date.now() < tokenExpiry - 2*60*1000) return; // token ok
+  // Token wygasa lub nie ma — odśwież cicho
+  return new Promise((resolve) => {
+    const originalCallback = tokenClient._callback;
+    tokenClient.callback = (r) => {
+      if(!r.error){
+        token = r.access_token;
+        tokenExpiry = Date.now() + 55 * 60 * 1000;
+        updateTokenStatus();
+      }
+      resolve();
+    };
+    tokenClient.requestAccessToken({prompt: ''}); // prompt:'' = cicho, bez okienka
+  });
+}
+
+function updateTokenStatus(){
+  const remaining = Math.max(0, Math.round((tokenExpiry - Date.now()) / 60000));
+  const cls = remaining > 10 ? 'token-ok' : 'token-warn';
+  const msg = '🔑 Token ważny jeszcze ~' + remaining + ' min';
+  const s1 = document.getElementById('token-status');
+  const s2 = document.getElementById('token-live');
+  if(s1) { s1.className='token-status '+cls; s1.textContent=msg; }
+  if(s2) { s2.className='token-status '+cls; s2.textContent=msg; }
+}
+
+// Aktualizuj status tokenu co minutę
+setInterval(updateTokenStatus, 60000);
 
 function doAuth(){
   showErr('');
-  if(!window.google){showErr('Odśwież stronę i spróbuj ponownie.');return;}
-  google.accounts.oauth2.initTokenClient({
-    client_id:CLIENT_ID,
-    scope:'https://www.googleapis.com/auth/webmasters.readonly',
-    callback:async(r)=>{
-      if(r.error){showErr('Błąd OAuth: '+r.error);return;}
-      token=r.access_token;
-      await fetchSites();
-      showStep('site');
-    }
-  }).requestAccessToken();
+  if(!window.google){ showErr('Odśwież stronę i spróbuj ponownie.'); return; }
+  initTokenClient();
+  tokenClient.requestAccessToken();
 }
 
 async function fetchSites(){
-  const r=await fetch('https://www.googleapis.com/webmasters/v3/sites',{headers:{Authorization:'Bearer '+token}});
-  const d=await r.json();
-  const sel=document.getElementById('site-select');
-  sel.innerHTML='<option value="">— wybierz domenę —</option>';
-  (d.siteEntry||[]).forEach(e=>{
-    const o=document.createElement('option');
-    o.value=e.siteUrl;o.textContent=e.siteUrl;sel.appendChild(o);
+  const r = await fetch('https://www.googleapis.com/webmasters/v3/sites', {headers:{Authorization:'Bearer '+token}});
+  const d = await r.json();
+  const sel = document.getElementById('site-select');
+  sel.innerHTML = '<option value="">— wybierz domenę —</option>';
+  (d.siteEntry||[]).forEach(e => {
+    const o = document.createElement('option');
+    o.value = e.siteUrl; o.textContent = e.siteUrl; sel.appendChild(o);
   });
-  sel.onchange=()=>{selectedSite=sel.value;};
+  sel.onchange = () => { selectedSite = sel.value; };
 }
 
 function useManual(){
-  selectedSite=document.getElementById('site-select').value;
-  if(!selectedSite){showErr('Wróć i wybierz domenę GSC.');return;}
-  urls404=document.getElementById('manual-urls').value
+  selectedSite = document.getElementById('site-select').value;
+  if(!selectedSite){ showErr('Wróć i wybierz domenę GSC.'); return; }
+  urls404 = document.getElementById('manual-urls').value
     .split('\n').map(l=>l.trim()).filter(l=>l.startsWith('http'));
-  if(!urls404.length){showErr('Brak prawidłowych URL-i. Każdy musi zaczynać się od https://');return;}
+  if(!urls404.length){ showErr('Brak prawidłowych URL-i. Każdy musi zaczynać się od https://'); return; }
   showErr('');
   processLinks();
 }
 
 async function processLinks(){
-  results=[];
+  results = [];
   showStep('results');
-  document.getElementById('progress-wrap').style.display='block';
-  document.getElementById('csv-btn').style.display='none';
+  document.getElementById('progress-wrap').style.display = 'block';
+  document.getElementById('csv-btn').style.display = 'none';
 
-  for(let i=0;i<urls404.length;i++){
-    const url=urls404[i];
-    document.getElementById('prog-text').textContent=(i+1)+'/'+urls404.length;
-    document.getElementById('prog-fill').style.width=Math.round(((i+1)/urls404.length)*100)+'%';
+  for(let i = 0; i < urls404.length; i++){
+    const url = urls404[i];
+    document.getElementById('prog-text').textContent = (i+1)+'/'+urls404.length;
+    document.getElementById('prog-fill').style.width = Math.round(((i+1)/urls404.length)*100)+'%';
+
+    // Sprawdź i odśwież token jeśli potrzeba
+    await ensureToken();
+    updateTokenStatus();
+
     try{
-      const r=await fetch('https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',{
-        method:'POST',
-        headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
-        body:JSON.stringify({inspectionUrl:url,siteUrl:selectedSite})
+      const r = await fetch('https://searchconsole.googleapis.com/v1/urlInspection/index:inspect', {
+        method: 'POST',
+        headers: {Authorization:'Bearer '+token, 'Content-Type':'application/json'},
+        body: JSON.stringify({inspectionUrl:url, siteUrl:selectedSite})
       });
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      const d=await r.json();
-      const refs=(d.inspectionResult?.indexStatusResult?.referringUrls||[]);
-      const cs=(d.inspectionResult?.indexStatusResult?.coverageState||'');
-      results.push({url,linkedFrom:refs,count:refs.length,coverageState:cs});
+
+      if(r.status === 401){
+        // Token wygasł mimo sprawdzenia — wymuś odświeżenie z promptem
+        await new Promise(resolve => {
+          tokenClient.callback = (resp) => {
+            if(!resp.error){ token=resp.access_token; tokenExpiry=Date.now()+55*60*1000; updateTokenStatus(); }
+            resolve();
+          };
+          tokenClient.requestAccessToken({prompt:'consent'});
+        });
+        // Ponów request
+        const r2 = await fetch('https://searchconsole.googleapis.com/v1/urlInspection/index:inspect', {
+          method: 'POST',
+          headers: {Authorization:'Bearer '+token, 'Content-Type':'application/json'},
+          body: JSON.stringify({inspectionUrl:url, siteUrl:selectedSite})
+        });
+        if(!r2.ok) throw new Error('HTTP '+r2.status);
+        const d2 = await r2.json();
+        const refs2 = (d2.inspectionResult?.indexStatusResult?.referringUrls||[]);
+        const cs2 = (d2.inspectionResult?.indexStatusResult?.coverageState||'');
+        results.push({url, linkedFrom:refs2, count:refs2.length, coverageState:cs2});
+      } else if(!r.ok){
+        throw new Error('HTTP '+r.status);
+      } else {
+        const d = await r.json();
+        const refs = (d.inspectionResult?.indexStatusResult?.referringUrls||[]);
+        const cs = (d.inspectionResult?.indexStatusResult?.coverageState||'');
+        results.push({url, linkedFrom:refs, count:refs.length, coverageState:cs});
+      }
     }catch(e){
-      results.push({url,linkedFrom:[],count:0,err:true,errMsg:e.message});
+      results.push({url, linkedFrom:[], count:0, err:true, errMsg:e.message});
     }
+
     renderTable();
     await sleep(300);
   }
-  document.getElementById('progress-wrap').style.display='none';
-  document.getElementById('csv-btn').style.display='inline-block';
+
+  document.getElementById('progress-wrap').style.display = 'none';
+  document.getElementById('csv-btn').style.display = 'inline-block';
   updateMetrics();
 }
 
 function renderTable(){
-  const f=(document.getElementById('filter').value||'').toLowerCase();
-  const rows=results.filter(r=>!f||r.url.includes(f)||r.linkedFrom.some(l=>l.includes(f)));
-  document.getElementById('result-body').innerHTML=rows.map(r=>{
-    let lh='';
-    if(r.err) lh='<span style="color:#999;font-size:12px">błąd: '+r.errMsg+'</span>';
-    else if(!r.linkedFrom.length) lh='<span style="color:#999;font-size:12px">brak linków wewnętrznych</span>';
-    else lh=r.linkedFrom.map(l=>'<a class="link" href="'+l+'" target="_blank">'+l+'</a>').join('');
+  const f = (document.getElementById('filter').value||'').toLowerCase();
+  const rows = results.filter(r=>!f||r.url.includes(f)||r.linkedFrom.some(l=>l.includes(f)));
+  document.getElementById('result-body').innerHTML = rows.map(r => {
+    let lh = '';
+    if(r.err) lh = '<span style="color:#999;font-size:12px">błąd: '+r.errMsg+'</span>';
+    else if(!r.linkedFrom.length) lh = '<span style="color:#999;font-size:12px">brak linków wewnętrznych</span>';
+    else lh = r.linkedFrom.map(l=>'<a class="link" href="'+l+'" target="_blank">'+l+'</a>').join('');
     return '<tr><td class="mono">'+r.url+'</td><td><span class="badge '+(r.count>0?'badge-red':'badge-gray')+'">'+r.count+'</span></td><td>'+lh+'</td></tr>';
   }).join('');
   updateMetrics();
 }
 
 function updateMetrics(){
-  document.getElementById('result-metrics').innerHTML=
+  document.getElementById('result-metrics').innerHTML =
     '<div class="metric"><div class="metric-val">'+results.length+'</div><div class="metric-lbl">sprawdzonych</div></div>'+
     '<div class="metric"><div class="metric-val">'+results.filter(r=>r.count>0).length+'</div><div class="metric-lbl">ma linki</div></div>'+
     '<div class="metric"><div class="metric-val">'+results.reduce((s,r)=>s+r.count,0)+'</div><div class="metric-lbl">linków łącznie</div></div>';
 }
 
 function exportCSV(){
-  const rows=[['URL 404','Liczba linków','Strony linkujące','Coverage State']];
-  results.forEach(r=>rows.push([r.url,r.count,r.linkedFrom.join(' | '),r.coverageState||'']));
-  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a=document.createElement('a');
-  a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
-  a.download='gsc_404_links.csv';a.click();
+  const rows = [['URL 404','Liczba linków','Strony linkujące','Coverage State']];
+  results.forEach(r => rows.push([r.url, r.count, r.linkedFrom.join(' | '), r.coverageState||'']));
+  const csv = rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download = 'gsc_404_links.csv'; a.click();
 }
 </script>
 </body>
